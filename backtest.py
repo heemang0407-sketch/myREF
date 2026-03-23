@@ -6,37 +6,42 @@
   - 초기 투자금: 1,000만원
 """
 
-import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
 
 def fetch_data(years: int = 5) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """KOSPI 지수와 KOSPI200(선물 프록시) 데이터를 가져옵니다."""
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=years * 365)
-    start_str = start_date.strftime("%Y-%m-%d")
-    end_str = end_date.strftime("%Y-%m-%d")
+    """KOSPI 지수와 KOSPI200(선물 프록시) 데이터를 가져옵니다.
+    Yahoo Finance 접속 불가 시 샘플 데이터를 사용합니다."""
+    try:
+        import yfinance as yf
+        end_date = datetime.today()
+        start_date = end_date - timedelta(days=years * 365)
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
 
-    # KOSPI 종합지수 (매매 대상)
-    kospi = yf.Ticker("^KS11").history(start=start_str, end=end_str, interval="1d")
+        kospi = yf.Ticker("^KS11").history(start=start_str, end=end_str, interval="1d")
+        kospi200 = yf.Ticker("^KS200").history(start=start_str, end=end_str, interval="1d")
 
-    # KOSPI 200 (선물 방향 시그널용 프록시)
-    # Yahoo Finance에서 코스피200 선물 연속계약이 불안정하므로 ^KS200 현물 사용
-    kospi200 = yf.Ticker("^KS200").history(start=start_str, end=end_str, interval="1d")
+        if kospi.empty or kospi200.empty:
+            raise ValueError("빈 데이터")
 
-    if kospi.empty or kospi200.empty:
-        raise ValueError("데이터를 가져올 수 없습니다. 네트워크를 확인하세요.")
+        kospi.index = kospi.index.tz_localize(None).normalize()
+        kospi200.index = kospi200.index.tz_localize(None).normalize()
 
-    # 인덱스를 날짜만으로 통일 (timezone 제거)
-    kospi.index = kospi.index.tz_localize(None).normalize()
-    kospi200.index = kospi200.index.tz_localize(None).normalize()
+        print(f"[KOSPI]    {kospi.index[0].date()} ~ {kospi.index[-1].date()}, {len(kospi)}일")
+        print(f"[KOSPI200] {kospi200.index[0].date()} ~ {kospi200.index[-1].date()}, {len(kospi200)}일")
+        print("[데이터 소스: Yahoo Finance 실시간]")
+        return kospi, kospi200
 
-    print(f"[KOSPI]    {kospi.index[0].date()} ~ {kospi.index[-1].date()}, {len(kospi)}일")
-    print(f"[KOSPI200] {kospi200.index[0].date()} ~ {kospi200.index[-1].date()}, {len(kospi200)}일")
-
-    return kospi, kospi200
+    except Exception:
+        print("[Yahoo Finance 접속 불가 - 실제 KOSPI 통계 기반 시뮬레이션 데이터 사용]")
+        from generate_sample_data import generate_kospi_sample
+        kospi, kospi200 = generate_kospi_sample(years=years)
+        print(f"[KOSPI]    {kospi.index[0].date()} ~ {kospi.index[-1].date()}, {len(kospi)}일")
+        print(f"[KOSPI200] {kospi200.index[0].date()} ~ {kospi200.index[-1].date()}, {len(kospi200)}일")
+        return kospi, kospi200
 
 
 def run_backtest(initial_capital: float = 10_000_000, years: int = 5) -> pd.DataFrame:
